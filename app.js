@@ -81,8 +81,8 @@ const els = {
   monthlyTableButton: document.getElementById("monthlyTableButton"),
   createMonthButton: document.getElementById("createMonthButton"),
   printMonthButton: document.getElementById("printMonthButton"),
-  printScopeSelect: document.getElementById("printScopeSelect"),
-  printScheduleButton: document.getElementById("printScheduleButton"),
+  printAllMonthButton: document.getElementById("printAllMonthButton"),
+  printWeekendButton: document.getElementById("printWeekendButton"),
   statusMessage: document.getElementById("statusMessage"),
   viewTitle: document.getElementById("viewTitle"),
   viewSubtitle: document.getElementById("viewSubtitle"),
@@ -1718,10 +1718,6 @@ function printCurrentMonth() {
   printSchedule("month");
 }
 
-function printSelectedSchedule() {
-  printSchedule(els.printScopeSelect?.value || "month");
-}
-
 async function ensureNextMonthWeekendShifts({ force = false, silent = true } = {}) {
   const { year, month } = nextMonthParts();
   return ensureWeekendShiftsForMonth(year, month, { force, silent });
@@ -2081,7 +2077,8 @@ els.createShiftForm.addEventListener("submit", createShift);
 els.shiftHoursForm.addEventListener("submit", updateShiftHours);
 els.createMonthButton.addEventListener("click", createNextMonthShifts);
 els.printMonthButton.addEventListener("click", printCurrentMonth);
-els.printScheduleButton.addEventListener("click", printSelectedSchedule);
+els.printAllMonthButton.addEventListener("click", () => printSchedule("month"));
+els.printWeekendButton.addEventListener("click", () => printSchedule("weekend"));
 els.sendNoticeButton.addEventListener("click", sendNotification);
 els.assignmentModalClose.addEventListener("click", closeManagerAssignmentModal);
 els.assignmentModal.addEventListener("click", (event) => {
