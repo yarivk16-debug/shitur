@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>שיבוץ משמרות - שיטור ימי</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main id="app">
+      <section class="login-screen" id="loginScreen">
+        <div class="login-panel">
+          <div class="brand-block">
+            <span class="brand-mark">ים</span>
+            <div>
+              <h1>שיבוץ משמרות</h1>
+              <p>שיטור ימי - מתנדבים ומנהלים</p>
+            </div>
+          </div>
+
+          <form id="loginForm" class="login-form">
+            <label>
+              שם פרטי ללא רווחים
+              <input id="usernameInput" autocomplete="given-name" required />
+            </label>
+            <label>
+              מספר נייד / סיסמה
+              <input id="passwordInput" autocomplete="tel" inputmode="tel" required />
+            </label>
+            <label class="remember-login">
+              <input id="rememberLoginInput" type="checkbox" />
+              <span>זכור אותי</span>
+            </label>
+            <button type="submit">כניסה למערכת</button>
+          </form>
+
+          <div class="login-tooltip">
+            כניסה ראשונה למתנדב: כתבו שם פרטי ללא רווחים ומספר נייד.
+            אם המשתמש לא קיים עדיין, הוא ייווצר אוטומטית בטבלת USERS.
+          </div>
+        </div>
+      </section>
+
+      <section class="shell hidden" id="mainShell">
+        <aside class="sidebar">
+          <div class="brand-block compact">
+            <span class="brand-mark">ים</span>
+            <div>
+              <strong>שיטור ימי</strong>
+              <small id="activeUserLabel"></small>
+            </div>
+          </div>
+
+          <nav class="nav-list">
+            <button class="nav-item active" data-view="dashboardView">סקירה</button>
+            <button class="nav-item" data-view="openShiftsView">משמרות פתוחות</button>
+            <button class="nav-item" data-view="calendarView">יומן משמרות</button>
+            <button class="nav-item" data-view="notificationsView">התראות</button>
+            <button class="nav-item manager-only" data-view="managerView">ניהול</button>
+          </nav>
+
+          <button id="logoutButton" class="ghost-button">יציאה</button>
+        </aside>
+
+        <section class="content">
+          <header class="topbar">
+            <div>
+              <h2 id="viewTitle">סקירה</h2>
+              <p id="viewSubtitle">תמונת מצב חודשית</p>
+            </div>
+            <div class="top-actions">
+              <button id="refreshButton" class="secondary-button">רענון</button>
+              <button id="monthlyTableButton" class="secondary-button">תצוגה חודשית</button>
+              <button id="printMonthButton" class="secondary-button manager-only">הדפסת משמרות</button>
+            </div>
+          </header>
+
+          <div id="statusMessage" class="status-message hidden"></div>
+
+          <section id="dashboardView" class="view active-view">
+            <div class="stats-grid">
+              <article class="stat-card">
+                <span>משמרות פתוחות</span>
+                <strong id="openCount">0</strong>
+              </article>
+              <article class="stat-card">
+                <span>בקשות ממתינות</span>
+                <strong id="pendingCount">0</strong>
+              </article>
+              <article class="stat-card">
+                <span>שיבוצים מאושרים</span>
+                <strong id="approvedCount">0</strong>
+              </article>
+              <article class="stat-card">
+                <span>התראות חדשות</span>
+                <strong id="noticeCount">0</strong>
+              </article>
+            </div>
+            <div class="split-grid">
+              <section>
+                <h3>המשמרות שלי</h3>
+                <div id="myAssignments" class="list-panel"></div>
+              </section>
+              <section>
+                <h3>קרובות לפתיחה</h3>
+                <div id="nextOpenShifts" class="list-panel"></div>
+              </section>
+            </div>
+          </section>
+
+          <section id="openShiftsView" class="view">
+            <div class="filter-row">
+              <input id="shiftSearchInput" placeholder="חיפוש לפי תאריך, יום, סוג או מיקום" />
+              <select id="shiftStatusFilter">
+                <option value="all">כל המשמרות</option>
+                <option value="open">פתוחות בלבד</option>
+                <option value="available">עם מקומות פנויים</option>
+              </select>
+            </div>
+            <div id="openShiftsList" class="card-grid"></div>
+          </section>
+
+          <section id="calendarView" class="view">
+            <div class="calendar-head">
+              <button id="prevMonthButton" class="icon-button">‹</button>
+              <strong id="calendarTitle"></strong>
+              <button id="nextMonthButton" class="icon-button">›</button>
+            </div>
+            <div class="calendar-grid" id="calendarGrid"></div>
+          </section>
+
+          <section id="notificationsView" class="view">
+            <div class="notice-composer manager-only">
+              <input id="noticeTitleInput" placeholder="כותרת התראה" />
+              <textarea id="noticeBodyInput" placeholder="תוכן ההתראה"></textarea>
+              <button id="sendNoticeButton" class="primary-button">שליחת התראה</button>
+            </div>
+            <div id="notificationsList" class="list-panel"></div>
+          </section>
+
+          <section id="managerView" class="view">
+            <div class="manager-grid">
+              <section>
+                <h3>פעולות ניהול חודשיות</h3>
+                <div class="form-card">
+                  <button id="createMonthButton" class="primary-button" type="button">פתיחת חודש</button>
+                </div>
+              </section>
+              <section>
+                <h3>הדפסת משמרות</h3>
+                <div class="form-card print-schedule-form">
+                  <label>
+                    טווח להדפסה
+                    <select id="printScopeSelect">
+                      <option value="month">חודש מלא</option>
+                      <option value="weekend">סוף שבוע — שישי ושבת</option>
+                    </select>
+                  </label>
+                  <button id="printScheduleButton" class="primary-button" type="button">הדפסה</button>
+                </div>
+              </section>
+              <section>
+                <h3>שינוי שעות משמרות</h3>
+                <form id="shiftHoursForm" class="form-card shift-hours-form">
+                  <div class="shift-hours-row">
+                    <strong>משמרת בוקר</strong>
+                    <label>התחלה <input name="start-0" type="time" required /></label>
+                    <label>סיום <input name="end-0" type="time" required /></label>
+                  </div>
+                  <div class="shift-hours-row">
+                    <strong>משמרת מבצעי</strong>
+                    <label>התחלה <input name="start-1" type="time" required /></label>
+                    <label>סיום <input name="end-1" type="time" required /></label>
+                  </div>
+                  <div class="shift-hours-row">
+                    <strong>משמרת צהריים</strong>
+                    <label>התחלה <input name="start-2" type="time" required /></label>
+                    <label>סיום <input name="end-2" type="time" required /></label>
+                  </div>
+                  <div class="shift-hours-row">
+                    <strong>משמרת ערב</strong>
+                    <label>התחלה <input name="start-3" type="time" required /></label>
+                    <label>סיום <input name="end-3" type="time" required /></label>
+                  </div>
+                  <button class="primary-button" type="submit">עדכון כל המשמרות</button>
+                </form>
+              </section>
+              <section>
+                <h3>בקשות שיבוץ לאישור</h3>
+                <div id="pendingAssignments" class="list-panel"></div>
+              </section>
+              <section>
+                <h3>יצירת משמרת</h3>
+                <form id="createShiftForm" class="form-card">
+                  <label>תאריך <input name="date" type="date" required /></label>
+                  <label>שעת התחלה <input name="start" type="time" required /></label>
+                  <label>שעת סיום <input name="end" type="time" required /></label>
+                  <label>סוג משמרת <input name="type" placeholder="סיור / הדרכה / כוננות" required /></label>
+                  <label>מיקום <input name="location" placeholder="תחנה / נקודת יציאה" required /></label>
+                  <label>כמות נדרשת <input name="required" type="number" min="1" value="2" required /></label>
+                  <label>הערות <textarea name="notes"></textarea></label>
+                  <button class="primary-button" type="submit">שמירת משמרת</button>
+                </form>
+              </section>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+    <div id="contextMenu" class="context-menu hidden"></div>
+    <div id="assignmentModal" class="modal-backdrop hidden">
+      <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="assignmentModalTitle">
+        <header class="modal-head">
+          <div>
+            <h3 id="assignmentModalTitle">ניהול שיבוץ</h3>
+            <p id="assignmentModalSubtitle"></p>
+          </div>
+          <button id="assignmentModalClose" class="icon-button" type="button">×</button>
+        </header>
+
+        <div class="modal-body">
+          <section>
+            <h4>מתנדבים משובצים</h4>
+            <div id="assignmentModalAssigned" class="list-panel compact-list"></div>
+          </section>
+
+          <section class="modal-section">
+            <h4>שיבוץ מתנדב קיים</h4>
+            <div class="inline-form">
+              <select id="assignmentVolunteerSelect"></select>
+              <button id="assignmentAddExistingButton" class="primary-button" type="button">שיבוץ</button>
+            </div>
+          </section>
+
+          <section class="modal-section">
+            <button id="assignmentToggleNewVolunteerButton" class="secondary-button" type="button">+ מתנדב חדש</button>
+            <form id="assignmentNewVolunteerForm" class="form-card compact-form hidden">
+              <label>שם פרטי ללא רווחים <input id="newVolunteerNameInput" required /></label>
+              <label>מספר נייד <input id="newVolunteerPhoneInput" inputmode="tel" required /></label>
+              <button class="primary-button" type="submit">יצירה ושיבוץ</button>
+            </form>
+          </section>
+        </div>
+      </section>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

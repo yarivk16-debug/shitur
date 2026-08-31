@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/airtable.js": {
+      "maxDuration": 10
+    }
+  }
+}
