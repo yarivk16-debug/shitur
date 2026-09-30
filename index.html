@@ -10,11 +10,18 @@
     <main id="app">
       <section class="login-screen" id="loginScreen">
         <div class="login-panel">
-          <div class="brand-block">
-            <span class="brand-mark">ים</span>
-            <div>
-              <h1>שיבוץ משמרות</h1>
-              <p>שיטור ימי - מתנדבים ומנהלים</p>
+          <div class="login-title-row">
+            <div class="brand-block">
+              <span class="brand-mark">ים</span>
+              <div>
+                <h1>שיבוץ משמרות</h1>
+                <p>שיטור ימי - מתנדבים ומנהלים</p>
+              </div>
+            </div>
+            <div class="display-mode-switch" role="group" aria-label="בחירת תצוגה">
+              <span>תצוגה</span>
+              <button type="button" data-display-mode="desktop" aria-pressed="false">מחשב</button>
+              <button type="button" data-display-mode="mobile" aria-pressed="false">נייד</button>
             </div>
           </div>
 
@@ -64,9 +71,16 @@
 
         <section class="content">
           <header class="topbar">
-            <div>
-              <h2 id="viewTitle">סקירה</h2>
-              <p id="viewSubtitle">תמונת מצב חודשית</p>
+            <div class="topbar-heading">
+              <div>
+                <h2 id="viewTitle">סקירה</h2>
+                <p id="viewSubtitle">תמונת מצב חודשית</p>
+              </div>
+              <div class="display-mode-switch" role="group" aria-label="בחירת תצוגה">
+                <span>תצוגה</span>
+                <button type="button" data-display-mode="desktop" aria-pressed="false">מחשב</button>
+                <button type="button" data-display-mode="mobile" aria-pressed="false">נייד</button>
+              </div>
             </div>
             <div class="top-actions">
               <button id="refreshButton" class="secondary-button">רענון</button>
@@ -154,6 +168,18 @@
                 </div>
               </section>
               <section>
+                <h3>ייצוא וארכיון משמרות</h3>
+                <form id="exportShiftsForm" class="form-card export-shifts-form">
+                  <p class="form-help">בחר טווח תאריכים לייצוא. הקובץ כולל סיכום לפי מתנדב, משמרות ושיבוצים.</p>
+                  <div class="date-range-row">
+                    <label>מתאריך <input id="exportFromInput" name="from" type="date" required /></label>
+                    <label>עד תאריך <input id="exportToInput" name="to" type="date" required /></label>
+                  </div>
+                  <button class="primary-button" type="submit">ייצוא משמרות ל-Excel</button>
+                  <p class="form-warning">לאחר הורדת הקובץ תישאל האם למחוק מהמערכת את המשמרות והשיבוצים שבטווח.</p>
+                </form>
+              </section>
+              <section>
                 <h3>שינוי שעות משמרות</h3>
                 <form id="shiftHoursForm" class="form-card shift-hours-form">
                   <div class="shift-hours-row">
@@ -238,6 +264,7 @@
       </section>
     </div>
 
+    <script src="excel-export.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

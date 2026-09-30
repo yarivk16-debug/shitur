@@ -1,4 +1,15 @@
 const API_ROOT = "/api/airtable";
+const DISPLAY_MODE_KEY = "marineDisplayMode";
+
+function initialDisplayMode() {
+  try {
+    const saved = localStorage.getItem(DISPLAY_MODE_KEY);
+    if (saved === "desktop" || saved === "mobile") return saved;
+  } catch (error) {
+    // Continue with the screen-size default when storage is unavailable.
+  }
+  return window.innerWidth <= 860 ? "mobile" : "desktop";
+}
 
 const TABLES = {
   users: "tbl9jDv9YMhdNQ054",
@@ -59,6 +70,7 @@ let state = {
   assignments: [],
   notifications: [],
   user: null,
+  displayMode: initialDisplayMode(),
   calendarDate: new Date(),
   calendarLayout: "calendar",
   printScope: null,
@@ -83,6 +95,9 @@ const els = {
   printMonthButton: document.getElementById("printMonthButton"),
   printAllMonthButton: document.getElementById("printAllMonthButton"),
   printWeekendButton: document.getElementById("printWeekendButton"),
+  exportShiftsForm: document.getElementById("exportShiftsForm"),
+  exportFromInput: document.getElementById("exportFromInput"),
+  exportToInput: document.getElementById("exportToInput"),
   statusMessage: document.getElementById("statusMessage"),
   viewTitle: document.getElementById("viewTitle"),
   viewSubtitle: document.getElementById("viewSubtitle"),
@@ -117,8 +132,31 @@ const els = {
   assignmentToggleNewVolunteerButton: document.getElementById("assignmentToggleNewVolunteerButton"),
   assignmentNewVolunteerForm: document.getElementById("assignmentNewVolunteerForm"),
   newVolunteerNameInput: document.getElementById("newVolunteerNameInput"),
-  newVolunteerPhoneInput: document.getElementById("newVolunteerPhoneInput")
+  newVolunteerPhoneInput: document.getElementById("newVolunteerPhoneInput"),
+  displayModeButtons: document.querySelectorAll("[data-display-mode]")
 };
+
+function applyDisplayMode(mode, persist = true) {
+  const nextMode = mode === "mobile" ? "mobile" : "desktop";
+  state.displayMode = nextMode;
+  document.body.classList.toggle("mobile-layout", nextMode === "mobile");
+  document.body.classList.toggle("desktop-layout", nextMode === "desktop");
+  document.body.dataset.displayMode = nextMode;
+
+  els.displayModeButtons.forEach((button) => {
+    const active = button.dataset.displayMode === nextMode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+
+  if (persist) {
+    try {
+      localStorage.setItem(DISPLAY_MODE_KEY, nextMode);
+    } catch (error) {
+      // The selected mode still works for this session when storage is unavailable.
+    }
+  }
+}
 
 function field(record, names, fallback = "") {
   if (!record) return fallback;
@@ -701,7 +739,9 @@ function renderCalendar() {
 
     cells.push(`
       <div class="day-cell focused-day ${isWeekendDay ? "weekend-day" : "midweek-shift-day"} ${canVolunteerRequestDay ? "volunteer-request-day" : ""} ${shifts.length ? "has-shifts" : "no-shifts"}" data-date="${iso}" data-weekend="${isWeekendDay ? "true" : "false"}" data-current-month="true">
-        <div class="day-number">${compactDate(iso)}</div>
+        <div class="day-heading">
+          <span class="day-number">${compactDate(iso)}</span>
+        </div>
         ${holidays.length ? `<div class="holiday-label">${escapeHtml(holidays.join(", "))}</div>` : ""}
         ${shifts.map(renderCalendarShiftChoice).join("")}
       </div>
@@ -827,12 +867,18 @@ function renderCalendarShiftChoice(shift) {
   const disabled = !checked && capacityLeft(shift) <= 0;
   const label = `${field(shift, FIELDS.shifts.type)} ${field(shift, FIELDS.shifts.start)}-${field(shift, FIELDS.shifts.end)}`;
   return `
-    <label class="shift-choice ${checked ? "selected" : ""}">
-      <input type="checkbox" data-action="toggle-shift" data-shift="${shift.id}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""} />
+    <button
+      type="button"
+      class="shift-choice ${checked ? "selected" : ""}"
+      data-action="toggle-shift"
+      data-shift="${shift.id}"
+      aria-pressed="${checked}"
+      ${disabled ? "disabled" : ""}
+    >
       <span class="check-mark">V</span>
       <span class="shift-choice-text">${escapeHtml(label)}</span>
       ${status ? `<small>${escapeHtml(status)}</small>` : ""}
-    </label>
+    </button>
   `;
 }
 
@@ -1718,6 +1764,235 @@ function printCurrentMonth() {
   printSchedule("month");
 }
 
+function shiftDurationHours(shift) {
+  const parseTime = (value) => {
+    const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
+    return match ? (Number(match[1]) * 60) + Number(match[2]) : null;
+  };
+  const start = parseTime(field(shift, FIELDS.shifts.start));
+  const end = parseTime(field(shift, FIELDS.shifts.end));
+  if (start === null || end === null) return 0;
+  const minutes = end > start ? end - start : end + (24 * 60) - start;
+  return Math.round((minutes / 60) * 100) / 100;
+}
+
+function exportCell(value, type = "string") {
+  return { value: value ?? "", type };
+}
+
+function fullNameForUsername(username) {
+  const user = state.users.find((item) => usernameOf(item) === username);
+  return user ? field(user, FIELDS.users.name, username) : username;
+}
+
+function archiveWorkbookSheets(shifts, assignments) {
+  const shiftsById = new Map(shifts.map((shift) => [shiftPublicId(shift), shift]));
+  const assignmentsByShift = new Map();
+  assignments.forEach((assignment) => {
+    const shiftId = field(assignment, FIELDS.assignments.shiftId);
+    if (!assignmentsByShift.has(shiftId)) assignmentsByShift.set(shiftId, []);
+    assignmentsByShift.get(shiftId).push(assignment);
+  });
+
+  const statistics = new Map();
+  assignments.forEach((assignment) => {
+    const username = field(assignment, FIELDS.assignments.username, "ללא שם");
+    const status = field(assignment, FIELDS.assignments.status);
+    const shift = shiftsById.get(field(assignment, FIELDS.assignments.shiftId));
+    if (!statistics.has(username)) {
+      statistics.set(username, {
+        username,
+        name: fullNameForUsername(username),
+        approved: 0,
+        hours: 0,
+        friday: 0,
+        saturday: 0,
+        weekday: 0,
+        morning: 0,
+        operational: 0,
+        afternoon: 0,
+        evening: 0,
+        pending: 0,
+        rejected: 0,
+        total: 0
+      });
+    }
+    const summary = statistics.get(username);
+    summary.total += 1;
+    if (status === "ממתין") summary.pending += 1;
+    if (status === "נדחה") summary.rejected += 1;
+    if (status !== "מאושר" || !shift) return;
+
+    summary.approved += 1;
+    summary.hours += shiftDurationHours(shift);
+    const date = new Date(`${field(shift, FIELDS.shifts.date)}T12:00:00`);
+    if (date.getDay() === 5) summary.friday += 1;
+    else if (date.getDay() === 6) summary.saturday += 1;
+    else summary.weekday += 1;
+
+    const type = String(field(shift, FIELDS.shifts.type));
+    if (type.includes("בוקר")) summary.morning += 1;
+    else if (type.includes("מבצעי")) summary.operational += 1;
+    else if (type.includes("צהריים")) summary.afternoon += 1;
+    else if (type.includes("ערב")) summary.evening += 1;
+  });
+
+  const statisticsRows = [
+    ["שם משתמש", "שם מלא", "משמרות מאושרות", "שעות מאושרות", "ימי שישי", "ימי שבת", "אמצע שבוע", "משמרות בוקר", "משמרות מבצעי", "משמרות צהריים", "משמרות ערב", "בקשות ממתינות", "שיבוצים שנדחו", "סה״כ רשומות"],
+    ...Array.from(statistics.values())
+      .sort((a, b) => b.hours - a.hours || a.name.localeCompare(b.name, "he"))
+      .map((item) => [
+        item.username,
+        item.name,
+        exportCell(item.approved, "number"),
+        exportCell(Math.round(item.hours * 100) / 100, "number"),
+        exportCell(item.friday, "number"),
+        exportCell(item.saturday, "number"),
+        exportCell(item.weekday, "number"),
+        exportCell(item.morning, "number"),
+        exportCell(item.operational, "number"),
+        exportCell(item.afternoon, "number"),
+        exportCell(item.evening, "number"),
+        exportCell(item.pending, "number"),
+        exportCell(item.rejected, "number"),
+        exportCell(item.total, "number")
+      ])
+  ];
+
+  const shiftRows = [
+    ["מזהה משמרת", "תאריך", "יום", "סוג משמרת", "שעת התחלה", "שעת סיום", "משך בשעות", "מיקום", "כמות נדרשת", "מספר משובצים מאושרים", "מתנדבים מאושרים", "סטטוס", "הערות מנהל"],
+    ...shifts.map((shift) => {
+      const linkedAssignments = assignmentsByShift.get(shiftPublicId(shift)) || [];
+      const approved = linkedAssignments.filter((assignment) => field(assignment, FIELDS.assignments.status) === "מאושר");
+      return [
+        shiftPublicId(shift),
+        exportCell(field(shift, FIELDS.shifts.date), "date"),
+        field(shift, FIELDS.shifts.day) || hebrewDay(field(shift, FIELDS.shifts.date)),
+        field(shift, FIELDS.shifts.type),
+        field(shift, FIELDS.shifts.start),
+        field(shift, FIELDS.shifts.end),
+        exportCell(shiftDurationHours(shift), "number"),
+        field(shift, FIELDS.shifts.location),
+        exportCell(Number(field(shift, FIELDS.shifts.required, 0)), "number"),
+        exportCell(approved.length, "number"),
+        approved.map((assignment) => fullNameForUsername(field(assignment, FIELDS.assignments.username))).join(", "),
+        field(shift, FIELDS.shifts.status),
+        field(shift, FIELDS.shifts.notes)
+      ];
+    })
+  ];
+
+  const assignmentRows = [
+    ["מזהה שיבוץ", "מזהה משמרת", "תאריך המשמרת", "יום", "שם משתמש", "שם מלא", "סטטוס שיבוץ", "סוג משמרת", "שעת התחלה", "שעת סיום", "משך בשעות", "תאריך בקשה", "תאריך אישור", "אושר על ידי", "הערות"],
+    ...assignments.map((assignment) => {
+      const shift = shiftsById.get(field(assignment, FIELDS.assignments.shiftId));
+      return [
+        field(assignment, FIELDS.assignments.id) || assignment.id,
+        field(assignment, FIELDS.assignments.shiftId),
+        exportCell(shift ? field(shift, FIELDS.shifts.date) : "", "date"),
+        shift ? (field(shift, FIELDS.shifts.day) || hebrewDay(field(shift, FIELDS.shifts.date))) : "",
+        field(assignment, FIELDS.assignments.username),
+        fullNameForUsername(field(assignment, FIELDS.assignments.username)),
+        field(assignment, FIELDS.assignments.status),
+        shift ? field(shift, FIELDS.shifts.type) : "",
+        shift ? field(shift, FIELDS.shifts.start) : "",
+        shift ? field(shift, FIELDS.shifts.end) : "",
+        exportCell(shift ? shiftDurationHours(shift) : 0, "number"),
+        exportCell(field(assignment, FIELDS.assignments.requestDate), "date"),
+        exportCell(field(assignment, FIELDS.assignments.approvalDate), "date"),
+        field(assignment, FIELDS.assignments.approvedBy),
+        field(assignment, FIELDS.assignments.notes)
+      ];
+    })
+  ];
+
+  return [
+    { name: "סטטיסטיקה", rows: statisticsRows, columnWidths: [18, 20, 16, 16, 12, 12, 12, 15, 16, 16, 15, 16, 16, 15] },
+    { name: "משמרות", rows: shiftRows, columnWidths: [24, 13, 12, 18, 13, 13, 14, 24, 14, 20, 32, 14, 34] },
+    { name: "שיבוצים", rows: assignmentRows, columnWidths: [22, 24, 16, 12, 18, 20, 16, 18, 13, 13, 14, 16, 16, 18, 32] }
+  ];
+}
+
+function downloadWorkbook(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+async function deleteAirtableRecords(table, records) {
+  for (let index = 0; index < records.length; index += 10) {
+    const recordIds = records.slice(index, index + 10).map((record) => record.id);
+    await airtable(table, { method: "DELETE", params: { records: recordIds } });
+  }
+}
+
+async function exportShiftArchive(event) {
+  event.preventDefault();
+  if (!isManager()) return;
+
+  const from = els.exportFromInput.value;
+  const to = els.exportToInput.value;
+  if (!from || !to) {
+    alert("יש לבחור תאריך התחלה ותאריך סיום.");
+    return;
+  }
+  if (from > to) {
+    alert("תאריך ההתחלה חייב להיות מוקדם מתאריך הסיום.");
+    return;
+  }
+
+  const shifts = state.shifts.filter((shift) => {
+    const date = String(field(shift, FIELDS.shifts.date));
+    return date >= from && date <= to;
+  });
+  if (!shifts.length) {
+    alert("לא נמצאו משמרות בטווח התאריכים שנבחר.");
+    return;
+  }
+
+  const shiftIds = new Set(shifts.map(shiftPublicId));
+  const assignments = state.assignments.filter((assignment) => shiftIds.has(field(assignment, FIELDS.assignments.shiftId)));
+  if (!window.MarineShiftExcel) {
+    alert("רכיב הייצוא לא נטען. נא לרענן את הדף ולנסות שוב.");
+    return;
+  }
+
+  const sheets = archiveWorkbookSheets(shifts, assignments);
+  const blob = window.MarineShiftExcel.createWorkbookBlob(sheets);
+  downloadWorkbook(blob, `marine-shifts_${from}_to_${to}.xlsx`);
+  showStatus(`יוצאו ${shifts.length} משמרות ו-${assignments.length} שיבוצים לקובץ Excel`);
+
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const shouldDelete = confirm(
+    `קובץ ה-Excel נוצר. האם למחוק כעת מהמערכת ${shifts.length} משמרות ו-${assignments.length} שיבוצים בטווח ${from} עד ${to}?\n\nהמחיקה אינה ניתנת לביטול. ודא שהקובץ נשמר לפני אישור.`
+  );
+  if (!shouldDelete) {
+    setTimeout(hideStatus, 3000);
+    return;
+  }
+
+  try {
+    showStatus("מוחק תחילה את השיבוצים שיוצאו...");
+    await deleteAirtableRecords(TABLES.assignments, assignments);
+    showStatus("מוחק את המשמרות שיוצאו...");
+    await deleteAirtableRecords(TABLES.shifts, shifts);
+    await loadData();
+    render();
+    showStatus(`נמחקו ${shifts.length} משמרות ו-${assignments.length} שיבוצים לאחר הייצוא`);
+    setTimeout(hideStatus, 4000);
+  } catch (error) {
+    await loadData();
+    render();
+    showStatus("המחיקה נעצרה לפני סיום. הנתונים נטענו מחדש; יש לבדוק אילו רשומות נותרו.", "error");
+    alert(`אירעה שגיאה בזמן המחיקה: ${error.message}`);
+  }
+}
+
 async function ensureNextMonthWeekendShifts({ force = false, silent = true } = {}) {
   const { year, month } = nextMonthParts();
   return ensureWeekendShiftsForMonth(year, month, { force, silent });
@@ -2051,6 +2326,9 @@ document.addEventListener("dragend", () => {
 });
 
 els.loginForm.addEventListener("submit", login);
+els.displayModeButtons.forEach((button) => {
+  button.addEventListener("click", () => applyDisplayMode(button.dataset.displayMode));
+});
 els.logoutButton.addEventListener("click", () => {
   sessionStorage.removeItem("marineUser");
   location.reload();
@@ -2079,6 +2357,7 @@ els.createMonthButton.addEventListener("click", createNextMonthShifts);
 els.printMonthButton.addEventListener("click", printCurrentMonth);
 els.printAllMonthButton.addEventListener("click", () => printSchedule("month"));
 els.printWeekendButton.addEventListener("click", () => printSchedule("weekend"));
+els.exportShiftsForm.addEventListener("submit", exportShiftArchive);
 els.sendNoticeButton.addEventListener("click", sendNotification);
 els.assignmentModalClose.addEventListener("click", closeManagerAssignmentModal);
 els.assignmentModal.addEventListener("click", (event) => {
@@ -2095,6 +2374,7 @@ els.assignmentNewVolunteerForm.addEventListener("submit", managerCreateVolunteer
 
 (async function init() {
   try {
+    applyDisplayMode(state.displayMode, false);
     loadRememberedLogin();
     await loadData();
     const savedUser = sessionStorage.getItem("marineUser");
